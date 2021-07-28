@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 
 from uuid import uuid4
 
@@ -7,9 +7,7 @@ from stog.data.dataset_readers.amr_parsing.amr import AMR, AMRGraph
 from stog.data.dataset_readers.amr_parsing.io import AMRIO
 from stog.data.dataset_readers.amr_parsing.node_utils import NodeUtilities
 from stog.data.dataset_readers.amr_parsing.preprocess.feature_annotator import FeatureAnnotator
-from stog.data.tokenizers.bert_tokenizer import AMRBertTokenizer
 from stog.predictors.stog import STOGPredictor
-from stog.models import STOG
 from stog.models.model import Model
 from stog.utils.params import Params
 # preprocessing steps
@@ -40,12 +38,13 @@ def add_annotation(amr: AMR, annotation: dict) -> None:
     amr.graph.set_src_tokens(amr.get_src_tokens())
 
 
-def parse(sentences: List[str],
-          serialization_dir: str,
-          util_dir: str,
-          stanford_nlp_server_url: str = 'http://localhost:9999',
-          device: str = 'cpu') -> List[AMR]: 
-    
+def setup_pipeline(serialization_dir: str,
+                   util_dir: str,
+                   stanford_nlp_server_url: str = 'http://localhost:9999',
+                   device: str = 'cpu') \
+        -> Tuple[FeatureAnnotator, STOGPredictor, \
+            Recategorizer, TextAnonymizor, SenseRemover, \
+                NodeRestore, Wikification, Expander]:
     params = Params.from_file(f'{serialization_dir}/config.json')
     params.loading_from_archive = False
     weights_file = f'{serialization_dir}/best.th'
@@ -60,14 +59,32 @@ def parse(sentences: List[str],
     recategorizer = Recategorizer(util_dir=util_dir)
     text_anonymizor = TextAnonymizor.from_json(f'{util_dir}/text_anonymization_rules.json')
     sense_remover = SenseRemover(node_utils=NodeUtilities.from_json(util_dir, 0))
-    dataset_reader = load_dataset_reader('AMR', word_splitter='bert-base-cased')
-    dataset_reader.set_evaluation()         
-    predictor._model.set_decoder_token_indexers(dataset_reader._token_indexers)                    
+
     node_restorer = NodeRestore(node_utils=NodeUtilities.from_json(util_dir, 0))
     wikification = Wikification(util_dir=util_dir)
     wikification.load_utils()
     expander = Expander(util_dir=util_dir)
 
+    return annotator, predictor, recategorizer, text_anonymizor, sense_remover, \
+        node_restorer, wikification, expander
+
+
+def parse(sentences: List[str],
+          serialization_dir: str,
+          util_dir: str,
+          stanford_nlp_server_url: str = 'http://localhost:9999',
+          device: str = 'cpu') -> List[AMR]: 
+    
+    annotator, predictor, recategorizer, \
+        text_anonymizor, sense_remover, \
+            node_restorer, wikification, expander = \
+                setup_pipeline(serialization_dir, util_dir, stanford_nlp_server_url, device)
+
+    dataset_reader = load_dataset_reader('AMR', word_splitter='bert-base-cased')
+    dataset_reader.set_evaluation()  
+
+    predictor._model.set_decoder_token_indexers(dataset_reader._token_indexers)                    
+    
     instances = []
     for s in sentences:
         amr = make_dummy_amr(s)
