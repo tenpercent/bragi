@@ -1,5 +1,7 @@
 from typing import List
 
+from uuid import uuid4
+
 from stog.data.dataset_builder import load_dataset_reader
 from stog.data.dataset_readers.amr_parsing.amr import AMR, AMRGraph
 from stog.data.dataset_readers.amr_parsing.io import AMRIO
@@ -21,19 +23,22 @@ from stog.data.dataset_readers.amr_parsing.postprocess.wikification import Wikif
 from stog.data.dataset_readers.amr_parsing.postprocess.expander import Expander
 
 
-def make_amr(annotation, sentence: str) -> AMR:
+def make_dummy_amr(sentence: str) -> AMR:
     amr = AMR()
-    amr.id = '0'
+    amr.id = uuid4().hex
     amr.sentence = sentence
 
+    amr.graph = AMRGraph.decode('(d / dummy)')
+    return amr
+
+
+def add_annotation(amr: AMR, annotation: dict) -> None:
     amr.tokens = annotation['tokens']
     amr.lemmas = annotation['lemmas']
     amr.pos_tags = annotation['pos_tags']
     amr.ner_tags = annotation['ner_tags']
-
-    amr.graph = AMRGraph.decode('(d / dummy)')
     amr.graph.set_src_tokens(amr.get_src_tokens())
-    return amr
+
 
 def parse(sentences: List[str],
           serialization_dir: str,
@@ -65,8 +70,8 @@ def parse(sentences: List[str],
 
     instances = []
     for s in sentences:
-        annotation = annotator(s)
-        amr = make_amr(annotation, s)
+        amr = make_dummy_amr(s)
+        add_annotation(amr, annotator(s))
         clean_amr(amr)
         recategorizer.recategorize_graph(amr)
         amr.abstract_map = text_anonymizor(amr)
@@ -86,6 +91,7 @@ def parse(sentences: List[str],
         result.append(prediction_amr)
 
     return result
+
 
 if __name__ == "__main__":
     raise NotImplementedError
