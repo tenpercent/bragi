@@ -21,13 +21,17 @@ from stog.data.dataset_readers.amr_parsing.postprocess.wikification import Wikif
 from stog.data.dataset_readers.amr_parsing.postprocess.expander import Expander
 
 
-def make_dummy_amr(sentence: str) -> AMR:
+def sentence_to_dummy_amr(sentence: str) -> AMR:
     amr = AMR()
     amr.id = uuid4().hex
     amr.sentence = sentence
 
     amr.graph = AMRGraph.decode('(d / dummy)')
     return amr
+
+
+def prediction_to_amr(prediction: dict, predictor: STOGPredictor) -> AMR:
+    return list(AMRIO.read_str(predictor.dump_line(prediction)))[0]
 
 
 def add_annotation(amr: AMR, annotation: dict) -> None:
@@ -69,6 +73,24 @@ def setup_pipeline(serialization_dir: str,
         node_restorer, wikification, expander
 
 
+def preprocess_amrs(amrs: List[AMR], annotator: FeatureAnnotator, \
+    recategorizer: Recategorizer, text_anonymizor: TextAnonymizor, sense_remover: SenseRemover) -> None:
+    
+    for amr in amrs:
+        add_annotation(amr, annotator(amr.sentence))
+        clean_amr(amr)
+        recategorizer.recategorize_graph(amr)
+        amr.abstract_map = text_anonymizor(amr)
+        sense_remover.remove_graph(amr)
+
+
+def postprocess_amrs(amrs: List[AMR], node_restorer: NodeRestore, wikification: Wikification, expander: Expander) -> None:
+    for amr in amrs:
+        node_restorer.restore_instance(amr)
+        wikification.wikify_graph(amr)
+        expander.expand_graph(amr)
+
+
 def parse(sentences: List[str],
           serialization_dir: str,
           util_dir: str,
@@ -85,29 +107,15 @@ def parse(sentences: List[str],
 
     predictor._model.set_decoder_token_indexers(dataset_reader._token_indexers)                    
     
-    instances = []
-    for s in sentences:
-        amr = make_dummy_amr(s)
-        add_annotation(amr, annotator(s))
-        clean_amr(amr)
-        recategorizer.recategorize_graph(amr)
-        amr.abstract_map = text_anonymizor(amr)
-        sense_remover.remove_graph(amr)
+    amrs = [sentence_to_dummy_amr(s) for s in sentences]
+    preprocess_amrs(amrs, annotator, recategorizer, text_anonymizor, sense_remover)
+    instances = [dataset_reader.text_to_instance(amr) for amr in amrs]
 
-        instances.append(dataset_reader.text_to_instance(amr))
+    prediction_batch = predictor.predict_batch_instance(instances)
 
-    prediction = predictor.predict_batch_instance(instances)
-
-    result = []
-    for p in prediction:
-        prediction_amr_str = predictor.dump_line(p)
-        prediction_amr = list(AMRIO.read_str(prediction_amr_str))[0]
-        node_restorer.restore_instance(prediction_amr)
-        wikification.wikify_graph(prediction_amr)
-        expander.expand_graph(prediction_amr)
-        result.append(prediction_amr)
-
-    return result
+    amrs_out = [prediction_to_amr(p, predictor) for p in prediction_batch]
+    postprocess_amrs(amrs_out, node_restorer, wikification, expander)
+    return amrs_out
 
 
 if __name__ == "__main__":
