@@ -73,6 +73,15 @@ def setup_pipeline(serialization_dir: str,
         node_restorer, wikification, expander
 
 
+def setup_dataset_reader(predictor: STOGPredictor):
+    dataset_reader = load_dataset_reader('AMR', word_splitter='bert-base-cased')
+    dataset_reader.set_evaluation()  
+
+    predictor._model.set_decoder_token_indexers(dataset_reader._token_indexers)  
+
+    return dataset_reader
+
+
 def preprocess_amrs(amrs: List[AMR], annotator: FeatureAnnotator, \
     recategorizer: Recategorizer, text_anonymizor: TextAnonymizor, sense_remover: SenseRemover) -> None:
     
@@ -102,10 +111,7 @@ def parse(sentences: List[str],
             node_restorer, wikification, expander = \
                 setup_pipeline(serialization_dir, util_dir, stanford_nlp_server_url, device)
 
-    dataset_reader = load_dataset_reader('AMR', word_splitter='bert-base-cased')
-    dataset_reader.set_evaluation()  
-
-    predictor._model.set_decoder_token_indexers(dataset_reader._token_indexers)                    
+    dataset_reader = setup_dataset_reader(predictor)                  
     
     amrs = [sentence_to_dummy_amr(s) for s in sentences]
     preprocess_amrs(amrs, annotator, recategorizer, text_anonymizor, sense_remover)
