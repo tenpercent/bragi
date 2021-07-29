@@ -31,8 +31,14 @@ def sentence_to_dummy_amr(sentence: str) -> AMR:
     return amr
 
 
-def prediction_to_amr(prediction: dict, predictor: STOGPredictor) -> AMR:
-    return list(AMRIO.read_str(predictor.dump_line(prediction)))[0]
+def prediction_to_amr(prediction: dict) -> AMR:
+    pred_graph = AMRGraph.from_prediction(prediction)
+    amr = prediction['gold_amr']
+    gold_graph = amr.graph
+    amr.graph = pred_graph
+    # amr.tgt_ref = ' '.join(prediction['nodes'])
+    # amr.tgt_pred = ' '.join(gold_graph.get_tgt_tokens())
+    return amr
 
 
 def add_annotation(amr: AMR, annotation: dict) -> None:
@@ -133,7 +139,7 @@ def parse(sentences: List[str],
             all_predictions += prediction_batch
             pbar.update(true_batch_size)
 
-    amrs_out = [prediction_to_amr(p, predictor) for p in all_predictions]
+    amrs_out = [prediction_to_amr(p) for p in all_predictions]
     postprocess_amrs(amrs_out, node_restorer, wikification, expander)
     return amrs_out
 
