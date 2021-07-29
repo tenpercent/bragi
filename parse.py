@@ -91,6 +91,7 @@ def preprocess_amrs(amrs: List[AMR], annotator: FeatureAnnotator, \
         recategorizer.recategorize_graph(amr)
         amr.abstract_map = text_anonymizor(amr)
         sense_remover.remove_graph(amr)
+        amr.graph.set_src_tokens(amr.get_src_tokens())
 
 
 def postprocess_amrs(amrs: List[AMR], node_restorer: NodeRestore, wikification: Wikification, expander: Expander) -> None:
