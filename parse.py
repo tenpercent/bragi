@@ -1,6 +1,7 @@
 from typing import List, Tuple
-
 from uuid import uuid4
+
+from tqdm import tqdm
 
 from stog.data.dataset_builder import load_dataset_reader
 from stog.data.dataset_readers.amr_parsing.amr import AMR, AMRGraph
@@ -105,7 +106,8 @@ def parse(sentences: List[str],
           serialization_dir: str,
           util_dir: str,
           stanford_nlp_server_url: str = 'http://localhost:9999',
-          device: str = 'cpu') -> List[AMR]: 
+          device: str = 'cpu',
+          batch_size: int = 128) -> List[AMR]: 
     
     annotator, predictor, recategorizer, \
         text_anonymizor, sense_remover, \
@@ -118,9 +120,20 @@ def parse(sentences: List[str],
     preprocess_amrs(amrs, annotator, recategorizer, text_anonymizor, sense_remover)
     instances = [dataset_reader.text_to_instance(amr) for amr in amrs]
 
-    prediction_batch = predictor.predict_batch_instance(instances)
+    i_start = 0
+    i_end = batch_size
+    all_predictions = []
+    with tqdm(total=len(amrs), desc='Predicting graph') as pbar:
+        while i_start < len(sentences):
+            true_batch_size = min(i_end, len(instances)) - i_start
+            instances_batch = instances[i_start : i_start + true_batch_size]
+            prediction_batch = predictor.predict_batch_instance(instances_batch)
+            i_start += true_batch_size
+            i_end += true_batch_size
+            all_predictions += prediction_batch
+            pbar.update(true_batch_size)
 
-    amrs_out = [prediction_to_amr(p, predictor) for p in prediction_batch]
+    amrs_out = [prediction_to_amr(p, predictor) for p in all_predictions]
     postprocess_amrs(amrs_out, node_restorer, wikification, expander)
     return amrs_out
 
